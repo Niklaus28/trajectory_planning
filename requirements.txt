@@ -1,0 +1,3 @@
+pip install --user hebi-py
+pip install numpy
+pip install matplotlib.pyplot
