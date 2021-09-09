@@ -75,16 +75,14 @@ def execute_trajectory(group, model, trajectory, feedback):
         eff_check = any(eff > 2.0 for eff in np.abs(eff_cmd))
 
         if vel_check == 1 or eff_check == 1 :
-            exit(1)
+            home_position()
+            go_home = True
         else:
             # Fill in the command and send commands to the arm
             command.position = pos_cmd
             command.velocity = vel_cmd
             command.effort = eff_cmd
             group.send_command(command)
-        
-        
-
 
 def get_grav_comp_efforts(robot_model, positions, gravityVec):
     # Normalize gravity vector (to 1g, or 9.8 m/s^2)
@@ -111,16 +109,16 @@ def setup(xyz_targets):
     
     # Go to the XYZ positions at four corners of the box, and create a rotation matrix
     # that has the end effector point straight forward.
+    home_pos = np.expand_dims(np.array([0.603551,0.025137,0.260300]),axis=-1)
+    xyz_targets = np.concatenate((home_pos,xyz),axis=1)    
     xyz_cols = xyz_targets.shape[1]
 
     # Choose an "elbow up" initial configuration for IK
-    elbow_up_angles = [-pi/3.0, pi / 2.0, pi/6.0]
-
+    elbow_up_angles = [-pi/6.0, pi/3.0, pi/6.0, 0.0]
+    
     joint_targets = np.empty((group.size, xyz_cols))
     for col in range(xyz_cols):
-        #so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)   #create a rotation matrix
         ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col]) #define xyz position
-        #ik_res_angles = model.solve_inverse_kinematics(elbow_up_angles, so3_objective, ee_position_objective)
         ik_res_angles = model.solve_inverse_kinematics(elbow_up_angles, ee_position_objective)
         joint_targets[:, col] = ik_res_angles
         elbow_up_angles = ik_res_angles # reset seed after each loop, define the next initial joint angle of robot
@@ -134,7 +132,7 @@ def setup(xyz_targets):
     waypoints = np.empty((group.size, 2))
     group.get_next_feedback(reuse_fbk=feedback)
     waypoints[:, 0] = feedback.position
-    waypoints[:, 1] = joint_targets[:, 0]
+    waypoints[:, 1] = joint_targets[:, 1]
     time_vector = [0, 5]  # Seconds for the motion - do this slowly
     vel = np.zeros((2,group.size))
     acc = np.zeros((2,group.size))
@@ -144,12 +142,12 @@ def setup(xyz_targets):
     execute_trajectory(group, model, trajectory, feedback)
 
     ## for more point to achieve
-    if xyz_cols < 2:
+    if xyz_cols < 3:
         pass
     else:
-        for col in range(xyz_cols-1):
+        for col in range(xyz_cols-2):
             waypoints[:, 0] = feedback.position
-            waypoints[:, 1] = joint_targets[:, 0] 
+            waypoints[:, 1] = joint_targets[:, col] 
             vel = np.zeros((group.size,2))
             acc = np.zeros((group.size,2))
             trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints,np.transpose(vel),np.transpose(acc))
@@ -211,9 +209,7 @@ def ExoArmExecute(x, y, z):
     current_time = now.strftime("%H:%M:%S")
     print("[ExoArmExecute] Time Start =", current_time)
     #status = state.ACTIVE
-    
-    
-    
+
     if (interrupted):
         try:
             xyz_targets = np.expand_dims(np.array([x,y,z]),axis=-1)
@@ -226,12 +222,9 @@ def ExoArmExecute(x, y, z):
     else:
         pass
 
-
-
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
     print("[ExoArmExecute] Time End   =", current_time)
-    
 
     return status
 
