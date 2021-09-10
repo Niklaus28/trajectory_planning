@@ -8,6 +8,7 @@ from math import pi
 from time import sleep, time
 import numpy as np
 from matplotlib import pyplot as plt
+from util import math_utils
 
 status = state.PENDING
 interrupted = False
@@ -147,7 +148,7 @@ def setup(xyz_targets):
     else:
         for col in range(xyz_cols-2):
             waypoints[:, 0] = feedback.position
-            waypoints[:, 1] = joint_targets[:, col] 
+            waypoints[:, 1] = joint_targets[:, col+2] 
             vel = np.zeros((group.size,2))
             acc = np.zeros((group.size,2))
             trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints,np.transpose(vel),np.transpose(acc))
@@ -159,9 +160,9 @@ def setup(xyz_targets):
     hebi.util.plot_logs(log_file,'effort',figure_spec=103)
 
 def home_position():
-    xyz_target = np.expand_dims(np.array([0.845534,0.173321,0.236279]),axis=2)
+    xyz_target = np.expand_dims(np.array([0.603551,0.025137,0.260300]),axis=-1)
     xyz_col = xyz_target.shape[1]
-    elbow_up_angle = [-pi/3.0, pi / 2.0, pi/6.0]
+    elbow_up_angle = [-pi/6.0, pi/3.0, pi/6.0, 0.0]
     print('reached home position')
 
     joint_target = np.empty((group.size, xyz_col))
@@ -218,7 +219,7 @@ def ExoArmExecute(x, y, z):
         except KeyboardInterrupt:
             home_position()
             status = state.ABORTED
-            sys.exit()
+            #sys.exit()
     else:
         pass
 
