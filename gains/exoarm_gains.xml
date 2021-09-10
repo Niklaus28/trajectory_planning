@@ -2,8 +2,8 @@
 <group_gains>
   <control_strategy>4 4 4 4</control_strategy>
   <position>
-    <kp>20 25 25 30</kp>
-    <ki>0 0 0 0</ki>
+    <kp>4.0 4.0 4.0 3.0</kp>
+    <ki>0.001 0.001 0.001 0.001</ki>
     <kd>0.005 0.005 0.005 0.005</kd>
     <feed_forward>0 0 0 0</feed_forward>
     <dead_zone>0 0 0 0</dead_zone>
@@ -14,11 +14,11 @@
     <target_lowpass>1 1 1 1</target_lowpass>
     <min_output>-20 -20 -20 -10</min_output>
     <max_output>20 20 20 10</max_output>
-    <output_lowpass>1 1 1 1</output_lowpass>
+    <output_lowpass>0.9 0.9 0.9 0.9</output_lowpass>
     <d_on_error>1 1 1 1</d_on_error>
   </position>
   <velocity>
-    <kp>0.05 0.05 0.05 0.05</kp>
+    <kp>0 0 0 0</kp>
     <ki>0 0 0 0 </ki>
     <kd>0 0 0 0</kd>
     <feed_forward>1 1 1 1</feed_forward>
@@ -34,9 +34,9 @@
     <d_on_error>1 1 1 1</d_on_error>
   </velocity>
   <effort>
-    <kp>0.25 0.25 0.25 0.25</kp>
+    <kp>0 0 0 0</kp>
     <ki>0 0 0 0</ki>
-    <kd>0.001 0.001 0.001 0.001</kd>
+    <kd>0.00 0.00 0.00 0.00</kd>
     <feed_forward>1 1 1 1</feed_forward>
     <dead_zone>0 0 0 0</dead_zone>
     <i_clamp>0.25 0.25 0.25 0.25</i_clamp>
