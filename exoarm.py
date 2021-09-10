@@ -160,6 +160,13 @@ def setup(xyz_targets):
     hebi.util.plot_logs(log_file,'effort',figure_spec=103)
 
 def home_position():
+    
+    group,model = get_group()
+    if group is None:
+        print('Group not found! Check that the family and name of a module on the network')
+        print('matches what is given in the source file.')
+        exit(1)
+        
     xyz_target = np.expand_dims(np.array([0.603551,0.025137,0.260300]),axis=-1)
     xyz_col = xyz_target.shape[1]
     elbow_up_angle = [-pi/6.0, pi/3.0, pi/6.0, 0.0]
