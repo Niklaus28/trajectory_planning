@@ -6,3 +6,5 @@ First, make sure you have all the requirements listed in the "Requirements" sect
   
  pip install -r requirements.txt
 
+
+Run exoarm.py
