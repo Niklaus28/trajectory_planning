@@ -1,0 +1,27 @@
+# -*- coding: utf-8 -*-
+#"""
+#Created on Mon Sep 13 09:48:45 2021
+
+#@author: haoji
+#"""
+
+---
+    User1:
+        x : 0.603551
+        y : 0.025137
+        z : 0.26030
+...
+---
+       
+    User2:
+        x : x2
+        y : y2
+        z : z2
+...
+---
+    User3:
+        x : x3
+        y : y3
+        z : z3
+
+...
