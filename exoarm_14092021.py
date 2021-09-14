@@ -20,7 +20,7 @@ group = None
 model = None
 robot_initialized = False
 
-gain_file = "gains/exoarm_gains_14092021.xml"
+gain_file = "gains/exoarm_gains.xml"
 hrdf_file = "hrdf/exoarm_hrdf.hrdf"
 user_file = "config/user1.yaml"
 
