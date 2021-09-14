@@ -165,7 +165,10 @@ def home_position():
         
     xyz_target = np.expand_dims(np.array([0.6629155874,0.1086072624,-0.0039570332]),axis=-1)
     xyz_col = xyz_target.shape[1]
-    elbow_up_angle = [-pi/6.0, pi/3.0, pi/6.0, 0.0]
+    
+    feedback = hebi.GroupFeedback(group.size)
+    group.get_next_feedback(reuse_fbk=feedback)
+    elbow_up_angle = feedback.position
     print('reached home position')
 
     joint_target = np.empty((group.size, xyz_col))
@@ -177,15 +180,19 @@ def home_position():
     # Set up feedback object, and start logging
     feedback = hebi.GroupFeedback(group.size)
     
-    waypoints = np.empty((group.size, 2))
+    #waypoints = np.empty((group.size, 2))
     group.get_next_feedback(reuse_fbk=feedback)
-    waypoints[:, 0] = feedback.position
-    waypoints[:, 1] = joint_target[:, 0]
-    time_vector = [0, 5]  # Seconds for the motion - do this slowly
-    trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints)
+    stiffnees = 0.001
+    tau = stiffness(joint_target[:,1] - feedback.position)
+    command.effort = tau
+    group.send_command(command)
+    #waypoints[:, 0] = feedback.position
+    #waypoints[:, 1] = joint_target[:, 0]
+    #time_vector = [0, 5]  # Seconds for the motion - do this slowly
+    #trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints)
 
     # Call helper function to execute this motion on the robot
-    execute_trajectory(group, model, trajectory, feedback)
+    #execute_trajectory(group, model, trajectory, feedback)
 
     
 def ExoArmTerminateAction():
