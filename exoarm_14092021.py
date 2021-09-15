@@ -9,8 +9,8 @@ from time import sleep, time
 import numpy as np
 from matplotlib import pyplot as plt
 
-from util import math_utils
-# from .util import math_utils
+log_level = 20  # DEBUG[10] INFO[20] WARNING[30] ERROR[40] CRITICAL[50]
+plot = False
 
 status = state.PENDING
 interrupted = False
@@ -68,6 +68,10 @@ def execute_trajectory(group, model, trajectory, feedback):
     """
     global go_home
     global status
+    global interrupted
+
+    if not robot_initialized:
+        raise RuntimeError("[execute_trajectory] Failed: robot not initialized")
 
     num_joints = group.size
     command = hebi.GroupCommand(num_joints)
@@ -79,8 +83,12 @@ def execute_trajectory(group, model, trajectory, feedback):
     status = state.ACTIVE
     while t < duration:
         if (interrupted) and (not go_home):
+            now = datetime.now()
+            current_time = now.strftime("%H:%M:%S")
+            print("[ExoArmExecute] Time Cancel   =", current_time)
             status = state.PREEMPTED
-            home_position()
+            interrupted = False
+            return
             
         # Get feedback and update the timer
         group.get_next_feedback(reuse_fbk=feedback)
@@ -102,13 +110,15 @@ def execute_trajectory(group, model, trajectory, feedback):
         if vel_check == 1 or eff_check == 1 :
             home_position()
             status = state.FAILED
-            go_home = True
+            return
         else:
             # Fill in the command and send commands to the arm
             command.position = pos_cmd
             command.velocity = vel_cmd
             command.effort = eff_cmd
             group.send_command(command)
+
+    status = state.SUCCEEDED
 
 def get_grav_comp_efforts(robot_model, positions, gravityVec):
     # Normalize gravity vector (to 1g, or 9.8 m/s^2)
@@ -132,6 +142,8 @@ def get_grav_comp_efforts(robot_model, positions, gravityVec):
     return np.squeeze(comp_torque)
 
 def setup(xyz_targets):
+    logger.debug("[setup]")
+    logger.debug("[setup] xyz_targets: %f %f %f", xyz_targets[0], xyz_targets[1], xyz_targets[2])
     
     # Go to the XYZ positions at four corners of the box, and create a rotation matrix
     # that has the end effector point straight forward.
@@ -163,32 +175,42 @@ def setup(xyz_targets):
     trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints)
 
     # Call helper function to execute this motion on the robot
-    execute_trajectory(group, model, trajectory, feedback)
+    try:
+        execute_trajectory(group, model, trajectory, feedback)
+        logger.info("[setup] robot status: %s", status.name)
+        if (status == state.SUCCEEDED):
+            logger.info("[setup] Reached target")
+    except Exception as e:
+        logger.error("[setup] exception: %s", e)
 
     ## for more point to achieve
-    if xyz_cols < 3:
-        pass
-    else:
-        for col in range(xyz_cols-2):
-            waypoints[:, 0] = feedback.position
-            waypoints[:, 1] = joint_targets[:, col+2] 
-            vel = np.zeros((group.size,2))
-            acc = np.zeros((group.size,2))
-            trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints,np.transpose(vel),np.transpose(acc))
-            execute_trajectory(group, model, trajectory, feedback)
+    # if xyz_cols < 3:
+    #     pass
+    # else:
+    #     for col in range(xyz_cols-2):
+    #         waypoints[:, 0] = feedback.position
+    #         waypoints[:, 1] = joint_targets[:, col+2] 
+    #         vel = np.zeros((group.size,2))
+    #         acc = np.zeros((group.size,2))
+    #         trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints,np.transpose(vel),np.transpose(acc))
+    #         execute_trajectory(group, model, trajectory, feedback)
 
-    log_file = group.stop_log()
-    hebi.util.plot_logs(log_file,'position',figure_spec=101)
-    hebi.util.plot_logs(log_file,'velocity',figure_spec=102)
-    hebi.util.plot_logs(log_file,'effort',figure_spec=103)
+    if (plot):
+        log_file = group.stop_log()
+        hebi.util.plot_logs(log_file,'position',figure_spec=101)
+        hebi.util.plot_logs(log_file,'velocity',figure_spec=102)
+        hebi.util.plot_logs(log_file,'effort',figure_spec=103)
 
 def home_position():
     global go_home
-    go_home = False
+    global status
+    go_home = True
+
+    logger.info("[home_position]")
     xyz_target = np.expand_dims(np.array([pt_home.x, pt_home.y, pt_home.z]), axis=-1)
+    logger.debug("[home_position] xyz_targets: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
     xyz_col = xyz_target.shape[1]
     elbow_up_angle = [-pi/6.0, pi/3.0, pi/6.0, 0.0]
-    # print('reached home position')
 
     joint_target = np.empty((group.size, xyz_col))
     for col in range(xyz_col):
@@ -207,8 +229,15 @@ def home_position():
     trajectory = hebi.trajectory.create_trajectory(time_vector, waypoints)
 
     # Call helper function to execute this motion on the robot
-    execute_trajectory(group, model, trajectory, feedback)
-    print('reached home position')
+    try:
+        execute_trajectory(group, model, trajectory, feedback)
+        if (status == state.SUCCEEDED):
+            status = state.PENDING
+            logger.info("[home_position] Reached home")
+    except Exception as e:
+        logger.error("[home_position] exception:\n %s", e)
+
+    go_home = False
 
 def setUserFile(file):
     global user_file
@@ -226,14 +255,20 @@ def LoadConfig():
     import yaml
     global pt_home
 
+    logger.info("user_file: %s", user_file)
     try:
         with open(user_file) as file:
             config = yaml.safe_load(file)
             pt_home = Point3d(config['home']['x'], config['home']['y'], config['home']['z'])
     except Exception as e:
-        print(e)
+        logger.error("[LoadConfig]:\n %s", e)
         return False
     return True
+
+def ExoArmHome():
+    home_position()
+    print(status.name)
+    print("Ready to execute goal")
 
 def ExoArmInit():
     global group
@@ -243,16 +278,16 @@ def ExoArmInit():
     success = True
 
     if not LoadConfig():
-        print("Config file not loaded")
+        logger.error("Config file not loaded")
         success = False
 
     group, model = get_group()
     if group is None:
-        print('Group not found! Check that the family and name of a module on the network matches what is given in the source file.')
+        logger.error('Group not found! Check that the family and name of a module on the network matches what is given in the source file.')
         success = False
 
     if model is None:
-        print('Model not loaded! Check hrdf file is provided correctly.')
+        logger.error('Model not loaded! Check hrdf file is provided correctly.')
         success = False
 
     robot_initialized = success
@@ -272,18 +307,13 @@ def ExoArmExecute(x, y, z):
     global go_home
     global robot_initialized
 
-    # TODO check -100 to go home
-    if (x==-100) and (y==-100) and (z==-100):
-        home_position()
-    
-
     if (not robot_initialized):
-        print("Robot not initialized [group, model]")
+        print("[ExoArmExecute] Robot not initialized")
         status = state.ABORTED
         return status
 
     interrupted = False
-    print("\n\n")
+    print("")
     print("[ExoArmExecute] Received pt: ", x, y, z);
     status = state.RECEIVED
 
@@ -292,10 +322,17 @@ def ExoArmExecute(x, y, z):
     current_time = now.strftime("%H:%M:%S")
     print("[ExoArmExecute] Time Start =", current_time)
 
+    if (int(x)==-100) and (int(y)==-100) and (int(z)==-100):
+        print("[ExoArmExecute] Go home request received")
+        home_position()
+        if (status == state.PENDING):
+            print("[ExoArmExecute] Go home request success")
+            status = state.SUCCEEDED
+        return status
+
     try:
         xyz_targets = np.expand_dims(np.array([x,y,z]),axis=-1)
         setup(xyz_targets)
-        status = state.SUCCEEDED
     except KeyboardInterrupt:
         home_position()
         status = state.ABORTED
@@ -306,31 +343,55 @@ def ExoArmExecute(x, y, z):
 
     return status
 
+def rosmain():
+    print("ExoArm ROS main")
+    global math_utils
+    from .util import math_utils as math_utils
+
+    global logger
+    import logging
+    formatter = logging.Formatter('%(message)s')
+    handler = logging.StreamHandler()
+    handler.setLevel(log_level)
+    handler.setFormatter(formatter)
+    logger = logging.getLogger('local_logger')
+    logger.setLevel(log_level)
+    logger.addHandler(handler)
+
 def main():
+    print("ExoArm main")
+    global math_utils
+    from util import math_utils as math_utils
+
+    global logger
+    import logging as logger
+    logger.basicConfig(format='%(message)s', level=log_level)
+
     global status
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--gain', type=str, default=gain_file)
     parser.add_argument('--hrdf', type=str, default=hrdf_file)
     parser.add_argument('--user', type=str, default=user_file)
+    parser.add_argument('--plot', type=bool, default=False)
     args = parser.parse_args()
 
     setGainFile(args.gain)
     setHrdfFile(args.hrdf)
     setUserFile(args.user)
 
-    print(" - gain file: ", gain_file)
-    print(" - hrdf file: ", hrdf_file)
-    print(" - user file: ", user_file)
+    logger.info(" - gain file: %s", gain_file)
+    logger.info(" - hrdf file: %s", hrdf_file)
+    logger.info(" - user file: %s", user_file)
 
-    print("ExoArm main")
     if not ExoArmInit():
-        print("ExoArm Initialization Failed")
+        logger.error("ExoArm Initialization Failed")
         exit()
 
-    home_position()
-    print("Ready to execute goal")
-    ExoArmExecute(1.0, 1.0, 1.0)
+    ExoArmHome()
+    input("Press Enter to continue...")
+    result = ExoArmExecute(1.0, 1.0, 1.0)
+    print("RESULT: ", result.name)
 
 if __name__ == "__main__":   
     main()
