@@ -58,7 +58,7 @@ def exponential_stiffness(joint_error):
         base_stiffness = 5.0
     elif joint_base >=0.03 and joint_base < 0.5:
         #base_stiffness = random.randint(start_range,end_range)
-        base_stiffness = 2.2
+        base_stiffness = decay_function(abs(joint_base))
     else:
         base_stiffness = 1.1
 
@@ -66,7 +66,7 @@ def exponential_stiffness(joint_error):
         J1_stiffness = 8.0
     elif joint_J1 >=0.03 and joint_J1 < 0.5:
         #J1_stiffness = random.randint(start_range,end_range)
-        J1_stiffness = 2.0
+        J1_stiffness = decay_function(abs(joint_J1))
 
     else:
         J1_stiffness = 1.1
@@ -160,7 +160,38 @@ def joint_PMP(xyz):
         group.send_command(command)
         
         print(joint_error)
-
+        
+def decay_function(point):
+    ##FOR BASE 
+    #STARTING POINT = 15
+    #DECAY RATE = 0.022
+    #T = 9
+    starting_point = 15.0
+    #magnitude = 10
+    decay_rate = 0.022
+    t = 9
+    array_size = 100
+    factor = 100
+    decay_formula2 = []
+    for i in range(array_size):
+        decay =  starting_point*pow((1-decay_rate),t)
+        decay_formula2.append(decay)
+        starting_point = decay
+    #decay_formula = 10*decay_formula
+    for i in range (array_size):
+        decay_formula2[i]= 2.0 + decay_formula2[i]
+    
+    index = decay_formula2[int(factor*point)]
+    #plt.plot(decay_formula2[0:50])
+    return index
+    #a = list(range(width))
+    #for i in range(width):
+    #    a[i]=a[i]*0.01
+    #decay_formula3 =np.array([a,decay_formula3])
+    #decay_formula3 = np.transpose(decay_formula3)
+    
+    #plt.plot(decay_formula3[0:500,0],decay_formula3[0:500,1])
+    
 def execute_trajectory(group, model, waypoints, feedback):
   """
   Helper function to actually execute the trajectory on a group of modules
