@@ -82,7 +82,7 @@ def execute_trajectory(group, model, trajectory, feedback):
 
     status = state.ACTIVE
     while t < duration:
-        if (interrupted) and (not go_home):
+        if (interrupted):
             now = datetime.now()
             current_time = now.strftime("%H:%M:%S")
             print("[ExoArmExecute] Time Cancel   =", current_time)
@@ -328,6 +328,8 @@ def ExoArmExecute(x, y, z):
         if (status == state.PENDING):
             print("[ExoArmExecute] Go home request success")
             status = state.SUCCEEDED
+        else:
+            print("[ExoArmExecute] Go home request end in state: ", status.name)
         return status
 
     try:
