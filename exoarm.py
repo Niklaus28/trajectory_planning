@@ -353,8 +353,6 @@ def ExoArmExecute(x, y, z):
 
 def rosmain():
     print("ExoArm ROS main")
-    global math_utils
-    from .util import math_utils as math_utils
 
     global logger
     import logging
@@ -368,8 +366,6 @@ def rosmain():
 
 def main():
     print("ExoArm main")
-    global math_utils
-    from util import math_utils as math_utils
 
     global logger
     import logging as logger
