@@ -62,15 +62,12 @@ def get_group():
 
     return group, model
 
-def decay_function(point,decay_rate,t):
-    #STARTING POINT = 15
-    #DECAY RATE = 0.022
-    #T = 9 , T for elbow = 3
+def decay_function(point,stiffness,decay_rate,t):
+
     starting_point = 15.0
-    decay_rate = 0.05
-    
     array_size = 100
     factor = 100
+    offset = stiffness + 0.5
     decay_formula2 = []
     for i in range(array_size):
         decay =  starting_point*pow((1-decay_rate),t)
@@ -78,10 +75,8 @@ def decay_function(point,decay_rate,t):
         starting_point = decay
 
     for i in range (array_size):
-        decay_formula2[i]= 1.5 + decay_formula2[i]
-    
-    #plt.plot(decay_formula2[0:50])
-    
+        decay_formula2[i]= offset + decay_formula2[i]
+        
     index = decay_formula2[int(factor*point)]
     return index
     
@@ -91,36 +86,113 @@ def exponential_stiffness(joint_error):
     joint_J2 = abs(joint_error[2])
     joint_J3 = abs(joint_error[3])
     
+    stiffness_base = 1.1
+    stiffness_J1 = 1.8 
+    stiffness_J2 = 2.0
+    stiffness_J3 = 2.5
+
     if joint_base < 0.03:
-        base_stiffness = 5.0
+        base_stiffness = 10.0
     elif joint_base >=0.03 and joint_base < 0.5:
-        base_stiffness = decay_function(abs(joint_base),0.022,9)
+        base_stiffness = decay_function(abs(joint_base),stiffness_base,0.015,9)
     else:
-        base_stiffness = 1.1
+        base_stiffness = stiffness_base
 
     if joint_J1 < 0.03:
-        J1_stiffness = 8.0
+        J1_stiffness = 15.0
     elif joint_J1 >=0.03 and joint_J1 < 0.5:
-        J1_stiffness = decay_function(abs(joint_J1),0.022,9)
+        J1_stiffness = decay_function(abs(joint_J1),stiffness_J1,0.05,1.5)
     else:
-        J1_stiffness = 1.3
+        J1_stiffness = stiffness_J1
 
     if joint_J2 < 0.03:
-        J2_stiffness = 8.0
+        J2_stiffness = 15.0
     elif joint_J2 >=0.03 and joint_J2 < 0.5:
-        J2_stiffness = decay_function(abs(joint_J2),0.022,6)
+        J2_stiffness = decay_function(abs(joint_J2),stiffness_J2,0.01,2)
+
     else:
-        J2_stiffness = 1.8
+        J2_stiffness = stiffness_J2
 
     if joint_J3 < 0.03:
-        J3_stiffness = 12.0
+        J3_stiffness = 15.0
     elif joint_J3 >=0.03 and joint_J3 < 0.5:
-        J3_stiffness = decay_function(abs(joint_J3),0.022,3)
+        J3_stiffness = decay_function(abs(joint_J3),stiffness_J3,0.015,3)
     else:
-        J3_stiffness = 2.0
+        J3_stiffness = stiffness_J3
 
     return np.expand_dims(np.array([base_stiffness,J1_stiffness,J2_stiffness,J3_stiffness]),axis=-1)
 
+def obstacle_decay(point):
+    starting_point = 1.5
+    decay_rate = 0.025
+    t=15
+    array_size = 500
+    factor = 100
+    decay_formula2 = []
+    for i in range(array_size):
+        decay =  starting_point*pow((1-decay_rate),t)
+        decay_formula2.append(decay)
+        starting_point = decay
+        
+    for i in range (array_size):
+        decay_formula2[i]= decay_formula2[i]
+        
+    index = decay_formula2[int(factor*point)]
+    return index
+
+def obstacle_force_function(q_current):
+    
+    torque_repulsive = np.empty((4,1))
+    q_base = q_current[0]
+    q_J1 = q_current[1]
+    q_J2 = q_current[2]
+    q_J3 = q_current[3]
+    
+    q_base_negative_limit = -pi
+    q_base_positive_limit = pi
+    
+    q_J1_negative_limit = -pi
+    q_J1_positive_limit = pi
+    
+    q_J2_negative_limit = pi/2
+    q_J2_positive_limit = 3*pi/4
+    
+    q_J3_negative_limit = -pi/2
+    q_J3_positive_limit = pi/4
+    
+    if q_base >= 0:
+        dist_base = q_base_positive_limit - q_base
+        torque_repulsive_base = -obstacle_decay(dist_base)
+    elif q_base <0:
+        dist_base = q_base - q_base_negative_limit
+        torque_repulsive_base = obstacle_decay(dist_base)
+    if q_J1 >= 0:
+        dist_J1 = q_J1_positive_limit - q_J1
+        torque_repulsive_J1 = -obstacle_decay(dist_J1)
+    elif q_J1 < 0:
+        dist_J1 = q_J1 - q_J1_negative_limit
+        torque_repulsive_J1 = obstacle_decay(dist_J1)
+    
+    if q_J2 > 1.75:
+        dist_J2 = q_J2_positive_limit - q_J2
+        torque_repulsive_J2 = -obstacle_decay(dist_J2)
+    elif q_J2 <= 1.75:
+        dist_J2 = q_J2 -q_J2_negative_limit
+        torque_repulsive_J2 = obstacle_decay(dist_J2)
+    
+    if q_J3 >= 0:
+        dist_J3 = q_J3_positive_limit - q_J3
+        torque_repulsive_J3 = -obstacle_decay(dist_J3)
+    elif q_J3 < 0:
+        dist_J3 = q_J3 - q_J3_negative_limit
+        torque_repulsive_J3 = obstacle_decay(dist_J3)
+    
+    torque_repulsive[0] = torque_repulsive_base
+    torque_repulsive[1] = torque_repulsive_J1
+    torque_repulsive[2] = torque_repulsive_J2
+    torque_repulsive[3] = torque_repulsive_J3
+    
+    return torque_repulsive
 
 def execute_trajectory(selected_pt,joint_error):
     """
@@ -140,7 +212,7 @@ def execute_trajectory(selected_pt,joint_error):
     feedback = hebi.GroupFeedback(group.size)
 
     status = state.ACTIVE
-    while (abs(joint_error[0]) >=0.03) or (abs(joint_error[1]) >=0.03) or (abs(joint_error[2]) >=0.03) or (abs(joint_error[3]) >=0.1):
+    while (abs(joint_error[0]) >=0.03) or (abs(joint_error[1]) >=0.03) or (abs(joint_error[2]) >=0.03) or (abs(joint_error[3]) >=0.03):
         if (interrupted):
             now = datetime.now()
             current_time = now.strftime("%H:%M:%S")
@@ -149,18 +221,17 @@ def execute_trajectory(selected_pt,joint_error):
             interrupted = False
             return
             
-        # Get feedback and update the timer
         group.get_next_feedback(reuse_fbk=feedback)
         current_joint_error = np.expand_dims(np.array(feedback.position),axis=-1)
         joint_error = selected_pt - current_joint_error
-        torque_command = exponential_stiffness(current_joint_error) * current_joint_error
+        torque_command = exponential_stiffness(joint_error) * joint_error
         for i in range(group.size):
             if abs(torque_command[i]) > 1.5:
                 torque_command[i] = 0.5 * torque_command[i]
-         
-        command.effort = torque_command 
+        
+        repulsive_torque = obstacle_force_function(feedback.position) 
+        command.effort = torque_command +repulsive_torque
         group.send_command(command)
-        print(current_joint_error)
         sleep(0.05)
 
     status = state.SUCCEEDED
@@ -231,8 +302,7 @@ def home_position():
     
     # Set up feedback object, and start logging
     group.get_next_feedback(reuse_fbk=feedback)
-    current_joint_angle = np.expand_dims(np.array(feedback.position),axis=-1)
-    joint_error = joint_target- current_joint_angle
+    joint_error = joint_target- np.expand_dims(np.array(feedback.position),axis=-1)
 
     # Call helper function to execute this motion on the robot
     try:
