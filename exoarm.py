@@ -256,6 +256,38 @@ def setup(xyz_targets):
         joint_targets[:, col] = ik_res_angles
         elbow_up_angles = ik_res_angles # reset seed after each loop, define the next initial joint angle of robot
 
+    num_joints = group.size
+    command = hebi.GroupCommand(num_joints)
+    q_J2_negative_limit = pi/2
+    q_J2_positive_limit = 3*pi/4
+    while joint_targets[2]<q_J2_negative_limit or joint_targets[2]>q_J2_positive_limit:
+        if (joint_targets[2] > q_J2_positive_limit):
+            command.effort = np.array([0, 0, -0.5,0])
+            group.send_command(command)
+            group.get_next_feedback(reuse_fbk=feedback)
+            elbow_up_angles = feedback.position
+            joint_targets = np.empty((group.size, xyz_cols))
+            print(joint_targets)
+            for col in range(xyz_cols):
+                ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col]) #define xyz position
+                ik_res_angles = model.solve_inverse_kinematics(elbow_up_angles, ee_position_objective)
+                joint_targets[:, col] = ik_res_angles
+                elbow_up_angles = ik_res_angles 
+        elif (joint_targets[2] < q_J2_negative_limit):
+            command.effort = np.array([0, 0, 0.5,0])
+            group.send_command(command)
+            group.get_next_feedback(reuse_fbk=feedback)
+            elbow_up_angles = feedback.position
+            joint_targets = np.empty((group.size, xyz_cols))
+            print(joint_targets)
+            for col in range(xyz_cols):
+                ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col]) #define xyz position
+                ik_res_angles = model.solve_inverse_kinematics(elbow_up_angles, ee_position_objective)
+                joint_targets[:, col] = ik_res_angles
+                elbow_up_angles = ik_res_angles 
+        else:
+            print('pass')
+            
     # Set up feedback object, and start logging
     log_directory = 'dirs'
     log_filename = 'planar_motion'
@@ -300,7 +332,39 @@ def home_position():
         ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_target[:, col]) #define xyz position
         ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, ee_position_objective)
         joint_target[:, col] = ik_res_angles
-    
+        
+    num_joints = group.size
+    command = hebi.GroupCommand(num_joints)
+    q_J2_negative_limit = pi/2
+    q_J2_positive_limit = 3*pi/4
+    while joint_targets[2]<q_J2_negative_limit or joint_targets[2]>q_J2_positive_limit:
+        if (joint_targets[2] > q_J2_positive_limit):
+            command.effort = np.array([0, 0, -0.5,0])
+            group.send_command(command)
+            group.get_next_feedback(reuse_fbk=feedback)
+            elbow_up_angles = feedback.position
+            joint_targets = np.empty((group.size, xyz_cols))
+            print(joint_targets)
+            for col in range(xyz_cols):
+                ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col]) #define xyz position
+                ik_res_angles = model.solve_inverse_kinematics(elbow_up_angles, ee_position_objective)
+                joint_targets[:, col] = ik_res_angles
+                elbow_up_angles = ik_res_angles 
+        elif (joint_targets[2] < q_J2_negative_limit):
+            command.effort = np.array([0, 0, 0.5,0])
+            group.send_command(command)
+            group.get_next_feedback(reuse_fbk=feedback)
+            elbow_up_angles = feedback.position
+            joint_targets = np.empty((group.size, xyz_cols))
+            print(joint_targets)
+            for col in range(xyz_cols):
+                ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col]) #define xyz position
+                ik_res_angles = model.solve_inverse_kinematics(elbow_up_angles, ee_position_objective)
+                joint_targets[:, col] = ik_res_angles
+                elbow_up_angles = ik_res_angles 
+        else:
+            print('pass')
+            
     # Set up feedback object, and start logging
     group.get_next_feedback(reuse_fbk=feedback)
     joint_error = joint_target- np.expand_dims(np.array(feedback.position),axis=-1)
