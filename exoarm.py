@@ -86,7 +86,8 @@ def exponential_stiffness(joint_error):
     joint_J2 = abs(joint_error[2])
     joint_J3 = abs(joint_error[3])
     
-    stiffness_base = 1.1
+    stiffness = np.empty((4,1))
+    stiffness_base = 1.4
     stiffness_J1 = 1.8 
     stiffness_J2 = 2.0
     stiffness_J3 = 2.5
@@ -94,7 +95,7 @@ def exponential_stiffness(joint_error):
     if joint_base < 0.03:
         base_stiffness = 10.0
     elif joint_base >=0.03 and joint_base < 0.5:
-        base_stiffness = decay_function(abs(joint_base),stiffness_base,0.015,9)
+        base_stiffness = decay_function(abs(joint_base),stiffness_base,0.03,6)
     else:
         base_stiffness = stiffness_base
 
@@ -148,11 +149,11 @@ def obstacle_force_function(q_current):
     q_J2 = q_current[2]
     q_J3 = q_current[3]
     
-    q_base_negative_limit = -pi
-    q_base_positive_limit = pi
+    q_base_negative_limit = -1.5
+    q_base_positive_limit = 1.5
     
-    q_J1_negative_limit = -pi
-    q_J1_positive_limit = pi
+    q_J1_negative_limit = -2.7
+    q_J1_positive_limit = 2.7
     
     q_J2_negative_limit = pi/2
     q_J2_positive_limit = 3*pi/4
@@ -212,7 +213,7 @@ def execute_trajectory(selected_pt,joint_error):
     feedback = hebi.GroupFeedback(group.size)
 
     status = state.ACTIVE
-    while (abs(joint_error[0]) >=0.03) or (abs(joint_error[1]) >=0.03) or (abs(joint_error[2]) >=0.03) or (abs(joint_error[3]) >=0.03):
+    while (abs(joint_error[0]) >=0.02) or (abs(joint_error[1]) >=0.02) or (abs(joint_error[2]) >=0.02) or (abs(joint_error[3]) >=0.05):
         if (interrupted):
             now = datetime.now()
             current_time = now.strftime("%H:%M:%S")
