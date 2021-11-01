@@ -171,7 +171,7 @@ class ExoArmHandle():
         except Exception as e:
             print('Could not load hrdf: {0}'.format(e))
             return group, None
-        model.add_rigid_body([], inertia, mass, output)
+        # model.add_rigid_body([], inertia, mass, output)
 
         return group, model
 
@@ -221,7 +221,7 @@ class ExoArmHandle():
                 elbow_up_angles = ik_res_angles
 
         while joint_target[1] > q_J1_positive_limit or joint_target[1] < q_J1_negative_limit:
-            if joint_target[1] > q_J_positive_limit:
+            if joint_target[1] > q_J1_positive_limit:
                 command.effort = np.array([0, -0.5, 0, 0])
             elif joint_target[1] < q_J1_negative_limit:
                 command.effort = np.array([0, 0.5, 0, 0])
@@ -286,7 +286,7 @@ class ExoArmHandle():
         logger.debug("[goal_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
         #joint_target, joint_error = self.__setup(xyz_target)
-        joint_target = np.expand_dims(np.array([-0.83994198, -2.95503402, -0.92154652,  0.41823718]),axis=-1)
+        joint_target = np.expand_dims(np.array([0.23784865, -1.31427526, -0.4508535,  0.4575676]),axis=-1)
         num_joints = self.__group.size
         feedback = hebi.GroupFeedback(num_joints)
         self.__group.get_next_feedback(reuse_fbk=feedback)
@@ -313,7 +313,7 @@ class ExoArmHandle():
         logger.debug("[home_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
         #joint_target, joint_error = self.__setup(xyz_target)
-        joint_target = np.expand_dims(np.array([-0.83994198, -2.95503402, -0.92154652,  0.41823718]),axis=-1)
+        joint_target = np.expand_dims(np.array([-0.65936834, -2.82209253, -1.04075229,  0.41674665]),axis=-1)
         num_joints = self.__group.size
         feedback = hebi.GroupFeedback(num_joints)
         self.__group.get_next_feedback(reuse_fbk=feedback)
@@ -350,6 +350,7 @@ class ExoArmHandle():
             self.__group.get_next_feedback(reuse_fbk=feedback)
             current_joint_error = np.expand_dims(np.array(feedback.position), axis=-1)
             joint_error = selected_pt - current_joint_error
+            print(joint_error)
             torque_command = self.__exponential_stiffness(joint_error) * joint_error
             for i in range(num_joints):
                 if abs(torque_command[i]) > 1.5:
@@ -388,7 +389,7 @@ class ExoArmHandle():
 
         stiffness = np.empty((4, 1))
         stiffness_base = 1.4
-        stiffness_J1 = 1.8
+        stiffness_J1 = 2.1
         stiffness_J2 = 2.0
         stiffness_J3 = 2.5
 
