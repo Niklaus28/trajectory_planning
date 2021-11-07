@@ -2,9 +2,9 @@
 <group_gains>
   <control_strategy>4 4 4 4</control_strategy>
   <position>
-    <kp>0.0 0.0 0.0 0.0</kp>
-    <ki>0.00 0.00 0.00 0.00</ki>
-    <kd>0.0 0.0 0.0 0.0</kd>
+    <kp>4.0 4.0 4.0 3.0</kp>
+    <ki>0.001 0.001 0.001 0.001</ki>
+    <kd>0.005 0.005 0.005 0.005</kd>
     <feed_forward>0 0 0 0</feed_forward>
     <dead_zone>0 0 0 0</dead_zone>
     <i_clamp>1 1 1 1</i_clamp>
@@ -18,7 +18,7 @@
     <d_on_error>1 1 1 1</d_on_error>
   </position>
   <velocity>
-    <kp>0.0 0.0 0.0 0.0</kp>
+    <kp>0 0 0 0</kp>
     <ki>0 0 0 0 </ki>
     <kd>0 0 0 0</kd>
     <feed_forward>1 1 1 1</feed_forward>
@@ -34,8 +34,8 @@
     <d_on_error>1 1 1 1</d_on_error>
   </velocity>
   <effort>
-    <kp>0.2 0.2 0.2 0.2</kp>
-    <ki>0.00 0.00 0.00 0</ki>
+    <kp>0 0 0 0</kp>
+    <ki>0 0 0 0</ki>
     <kd>0.00 0.00 0.00 0.00</kd>
     <feed_forward>1 1 1 1</feed_forward>
     <dead_zone>0 0 0 0</dead_zone>
