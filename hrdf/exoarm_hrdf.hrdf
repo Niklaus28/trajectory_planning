@@ -5,8 +5,6 @@
   <actuator type="X8-16" />
   <link type="X5" twist="3.141580" extension="0.225000" />
   <actuator type="X8-16" />
-  <bracket type="X5HeavyRightOutside" />
-  <actuator type="X8-16" />
   <end-effector />
 </robot>
   
