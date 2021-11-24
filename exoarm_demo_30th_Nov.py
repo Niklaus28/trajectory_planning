@@ -10,8 +10,8 @@ from matplotlib import pyplot as plt
 LOG_LEVEL = 10  # DEBUG[10] INFO[20] WARNING[30] ERROR[40] CRITICAL[50]
 LOG_HEBI = False
 
-gain_file = "gains/exoarm_plannar_gains.xml"
-z_gain_file = "gains/exoarm_linear_gains.xml" 
+gain_file = "gains/exoarm_gains_plannar_task.xml"
+z_gain_file = "gains/exoarm_gains_z.xml" 
 hrdf_file = "hrdf/exoarm_hrdf.hrdf"
 user_file = "config/user1.yaml"
 resolution = -(2*pi)/0.072
