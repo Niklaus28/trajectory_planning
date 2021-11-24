@@ -1,0 +1,9 @@
+---
+    camera_to_robot_base:
+        x : 0.07978
+        y : 0.12712
+        z : 0.151
+        roll:0.0
+        pitch: 0.0
+        yaw: 0.0
+...
