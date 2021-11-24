@@ -353,6 +353,26 @@ class ExoArmHandle():
         index = decay_formula2[int(factor * point)]
         return index
 
+    def __z_stiffness(point):
+        starting_point = 4.0
+        decay_rate = 0.0001
+        t= 2
+        stiffness = 2.0
+        array_size = 10000
+        factor = 100
+        offset = stiffness + 0.5
+        decay_formula2 = []
+        for i in range(array_size):
+            decay =  starting_point*pow((1+decay_rate),t)
+            decay_formula2.append(decay)
+            starting_point = decay
+
+        for i in range (array_size):
+            decay_formula2[i]= offset + decay_formula2[i]
+        
+        index = -decay_formula2[int(factor*abs(point))]
+        return index
+
     def __exponential_stiffness(self, joint_error):
         joint_base = abs(joint_error[0])
         joint_J1 = abs(joint_error[1])
