@@ -6,6 +6,7 @@ from math import pi
 from time import sleep, time
 import numpy as np
 from matplotlib import pyplot as plt
+import util.math_utils as math_utils
 
 LOG_LEVEL = 10  # DEBUG[10] INFO[20] WARNING[30] ERROR[40] CRITICAL[50]
 LOG_HEBI = False
@@ -31,7 +32,7 @@ class ExoArmHandle():
         self.__model = None
         self.__robot_initialized = False
         self.__gain_file = gain_file
-        self.__z_gain_file = __z_gain_file
+        self.__z_gain_file = z_gain_file
         self.__hrdf_file = hrdf_file
         self.__user_file = user_file
         self.__pt_home = None
@@ -202,7 +203,7 @@ class ExoArmHandle():
 
     def __setup(self, xyz_targets):
         num_joints = self.__group.size
-        xyz_col = xyz_target.shape[1]
+        xyz_col = xyz_targets.shape[1]
         feedback = hebi.GroupFeedback(num_joints)
         self.__group.get_next_feedback(reuse_fbk=feedback)
         z_feedback = hebi.GroupFeedback(self.__z_group.size)
@@ -321,7 +322,7 @@ class ExoArmHandle():
             repulsive_torque = self.__obstacle_force_function(feedback.position)
             command.effort = torque_command + repulsive_torque
 
-            z_torque =  -z_stiffness(z_error) * z_error    
+            z_torque =  -self.__z_stiffness(z_error) * z_error    
             z_current = z_feedback.position / resolution
             z_error_in_metre = (z_target - z_current)
             z_error = z_error_in_metre * resolution
@@ -385,17 +386,17 @@ class ExoArmHandle():
         margin = 0.5
 
         if joint_base < margin:
-            base_stiffness = decay_function(abs(joint_base),stiffness_base,0.05,2)
+            base_stiffness = self.__decay_function(abs(joint_base), stiffness_base, 0.05, 2)
         else:
             base_stiffness = stiffness_base
 
         if joint_J1 < margin:
-            J1_stiffness = decay_function(abs(joint_J1),stiffness_J1,0.05,2)
+            J1_stiffness = self.__decay_function(abs(joint_J1), stiffness_J1, 0.05, 2)
         else:
             J1_stiffness = stiffness_J1
 
         if joint_J2 < margin:
-            J2_stiffness = decay_function(abs(joint_J2),stiffness_J2,0.05,1.5)
+            J2_stiffness = self.__decay_function(abs(joint_J2), stiffness_J2, 0.05, 1.5)
         else:
             J2_stiffness = stiffness_J2
 
@@ -499,7 +500,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--gain', type=str, default=gain_file)
-    parser.add_argument('--linear_gain', type=str, default=z)
+    parser.add_argument('--linear_gain', type=str, default=z_gain_file)
     parser.add_argument('--hrdf', type=str, default=hrdf_file)
     parser.add_argument('--user', type=str, default=user_file)
     parser.add_argument('--log', type=bool, default=False)
