@@ -31,7 +31,7 @@ class ExoArmHandle():
         self.__model = None
         self.__robot_initialized = False
         self.__gain_file = gain_file
-        self.__z_gain_file = __z_gain_file
+        self.__z_gain_file = z_gain_file
         self.__hrdf_file = hrdf_file
         self.__user_file = user_file
         self.__pt_home = None
@@ -236,11 +236,13 @@ class ExoArmHandle():
 
         return joint_target, joint_error, z_target, z_error
 
-    def __goal_position(self, xyz_target):
+    def __goal_position(self, xyz_targets):
         logger.info("[goal_position]")
         logger.debug("[goal_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
+        xyz_target = xyz_targets + np.expand_dims(np.array([0.07978,, 0.12712, 0.011]),axis=-1)
         joint_target, joint_error, z_target, z_error = self.__setup(xyz_target)
+        
         num_joints = self.__group.size
         feedback = hebi.GroupFeedback(num_joints)
         self.__group.get_next_feedback(reuse_fbk=feedback)
