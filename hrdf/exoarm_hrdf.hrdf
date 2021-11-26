@@ -5,6 +5,6 @@
   <actuator type="X8-16" />
   <link type="X5" twist="0.000000" extension="0.325000" />
   <actuator type="X8-16" />
-  <rigid-body mass="0.25157" com_trans="0.00410 0.00074 0.06684" output_rot="Rz(0)" output_trans="0.3 0 0.09491"/>
+  <rigid-body mass="0.25157" com_trans="0.00410 0.00074 0.06684" output_rot="Rz(0)" output_trans="0.2 0 0.05491"/>
   <end-effector />
 </robot>

@@ -1,4 +1,5 @@
 from datetime import datetime
+from signal import SIGINT
 from exoarm_state import RobotState as state
 
 import hebi
@@ -6,16 +7,46 @@ from math import pi
 from time import sleep, time
 import numpy as np
 from matplotlib import pyplot as plt
-import util.math_utils as math_utils
+# import util.math_utils as math_utils
 
 LOG_LEVEL = 10  # DEBUG[10] INFO[20] WARNING[30] ERROR[40] CRITICAL[50]
 LOG_HEBI = False
 
-gain_file = "gains/exoarm_gains_plannar_task.xml"
-z_gain_file = "gains/exoarm_gains_z.xml" 
-hrdf_file = "hrdf/exoarm_hrdf.hrdf"
-user_file = "config/user1.yaml"
+# gain_file = "gains/exoarm_gains_plannar_task.xml"
+# z_gain_file = "gains/exoarm_gains_z.xml"
+# hrdf_file = "hrdf/exoarm_hrdf.hrdf"
+# user_file = "config/user1.yaml"
+gain_file = "/home/neha/wp4_demo/py3/src/oct1_demo/exoarm/scripts/exoarm_module/gains/exoarm_gains_plannar_task.xml"
+z_gain_file = "/home/neha/wp4_demo/py3/src/oct1_demo/exoarm/scripts/exoarm_module/gains/exoarm_gains_z.xml" 
+hrdf_file = "/home/neha/wp4_demo/py3/src/oct1_demo/exoarm/scripts/exoarm_module/hrdf/exoarm_hrdf.hrdf"
+user_file = "/home/neha/wp4_demo/py3/src/oct1_demo/exoarm/scripts/exoarm_module/config/user1.yaml"
 resolution = -(2*pi)/0.072
+
+from math import cos, sin
+def rotate_z(angle, dtype=np.float64, output=None):
+  """
+  Apply a Z rotation to the matrix
+
+  :param angle:
+  :param dtype:
+
+  :param output:
+  :type output:  np.ndarray, NoneType
+
+  :return: 3x3 rotation matrix
+  :rtype:  np.ndarray
+  """
+  c = cos(angle)
+  s = sin(angle)
+  if output is None:
+    output = np.empty((3, 3), dtype=dtype)
+  output[0, 0] = c
+  output[0, 1] = -s
+  output[1, 0] = s
+  output[1, 1] = c
+  output[2, 2] = 1.0
+  output[2, 0:2] = output[0:2, 2] = 0.0
+  return output
 
 class Point3d(object):
     def __init__(self, x, y, z):
@@ -163,45 +194,47 @@ class ExoArmHandle():
         sleep(2.0)
         group = lookup.get_group_from_names(families, names)
         if group is None:
-            return None, None
+            return None, None, None
         
         z_group = lookup.get_group_from_names(families, z_name)
         if z_group is None:
-            return None, None
+            return group, None, None
 
         # Set gains
         gains_command = hebi.GroupCommand(group.size)
         try:
-            gains_command.read_gains(self.__gain_file)
+            # gains_command.read_gains(self.__gain_file)
+            gains_command.read_gains("/home/neha/wp4_demo/py3/src/oct1_demo/exoarm/scripts/exoarm_module/gains/exoarm_gains_plannar_task.xml")
         except Exception as e:
             print('Failed to read gains: {0}'.format(e))
-            return group, z_group, None
+            return group, None, z_group
         if not group.send_command_with_acknowledgement(gains_command):
             print('Failed to receive ack from group')
-            return group, z_group, None
+            return group, None, z_group
 
         z_gains_command = hebi.GroupCommand(z_group.size)
         try:
-            z_gains_command.read_gains("gains/exoarm_gains_z.xml")
+            # z_gains_command.read_gains(self.__z_gain_file)
+            z_gains_command.read_gains("/home/neha/wp4_demo/py3/src/oct1_demo/exoarm/scripts/exoarm_module/gains/exoarm_gains_z.xml")
         except Exception as e:
             print('Failed to read gains: {0}'.format(e))
-            return group, z_group, None
+            return group, None, z_group
 
         if not z_group.send_command_with_acknowledgement(z_gains_command):
             print('Failed to receive ack from group')
-            return group, z_group, None
+            return group, None, z_group
 
         model = None
         try:
             model = hebi.robot_model.import_from_hrdf(self.__hrdf_file)
         except Exception as e:
             print('Could not load hrdf: {0}'.format(e))
-            return group, None
+            return group, None, z_group
         # model.add_rigid_body([], inertia, mass, output)
 
         return group, model, z_group
 
-    def __setup(self, xyz_targets):
+    def __setup(self, xyz_targets,flag=None):
         num_joints = self.__group.size
         xyz_col = xyz_targets.shape[1]
         feedback = hebi.GroupFeedback(num_joints)
@@ -213,7 +246,11 @@ class ExoArmHandle():
         xyz_target[-1] = 0.3
 
         elbow_up_angle = feedback.position
-        rotation_target = math_utils.rotate_z(0)
+        # rotation_target = math_utils.rotate_z(0)
+        if flag =='home':
+            rotation_target = rotate_z(0)
+        else:
+            rotation_target = rotate_z(pi/6)
         joint_target = np.empty((num_joints, xyz_col))
         
         for col in range(xyz_col):
@@ -237,11 +274,13 @@ class ExoArmHandle():
 
         return joint_target, joint_error, z_target, z_error
 
-    def __goal_position(self, xyz_target):
+    def __goal_position(self, xyz_targets):
         logger.info("[goal_position]")
-        logger.debug("[goal_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
+        logger.debug("[goal_position] Target: %f %f %f", xyz_targets[0], xyz_targets[1], xyz_targets[2])
 
+        xyz_target = xyz_targets + np.expand_dims(np.array([-0.075, 0.1195, -0.1569]),axis=-1)
         joint_target, joint_error, z_target, z_error = self.__setup(xyz_target)
+        
         num_joints = self.__group.size
         feedback = hebi.GroupFeedback(num_joints)
         self.__group.get_next_feedback(reuse_fbk=feedback)
@@ -270,7 +309,7 @@ class ExoArmHandle():
         logger.info("[home_position]")
         logger.debug("[home_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
-        joint_target, joint_error, z_target, z_error = self.__setup(xyz_target)
+        joint_target, joint_error, z_target, z_error = self.__setup(xyz_target,flag='home')
         #joint_target = np.expand_dims(np.array([-0.65936834, -2.82209253, -1.04075229,  0.41674665]),axis=-1)
         num_joints = self.__group.size
         feedback = hebi.GroupFeedback(num_joints)
@@ -281,7 +320,7 @@ class ExoArmHandle():
         joint_error = joint_target - np.expand_dims(np.array(feedback.position), axis=-1)
         
         try:
-            self.__execute_trajectory(joint_target, joint_error, z_target, z_error)
+            self.__execute_trajectory(joint_target, joint_error, z_target, z_error, flag='home')
             if (self.__status == state.SUCCEEDED):
                 self.__status = state.PENDING
                 logger.info("[home_position] Reached home")
@@ -290,7 +329,7 @@ class ExoArmHandle():
 
         self.__go_home = False
 
-    def __execute_trajectory(self, selected_pt, joint_error, z_target, z_error):
+    def __execute_trajectory(self, selected_pt, joint_error, z_target, z_error, flag=None):
         if not self.__robot_initialized:
             raise RuntimeError("[execute_trajectory] Failed: robot not initialized")
 
@@ -301,39 +340,90 @@ class ExoArmHandle():
         z_feedback = hebi.GroupFeedback(self.__z_group.size)
 
         self.__status = state.ACTIVE
-        while (abs(joint_error[0]) >= 0.02) or (abs(joint_error[1]) >= 0.02) or (abs(joint_error[2]) >= 0.05) or (abs(z_error) >= 0.1):
-            if (self.__interrupted):
-                now = datetime.now()
-                current_time = now.strftime("%H:%M:%S")
-                print("[ExoArmExecute] Time Cancel   =", current_time)
-                self.__status = state.PREEMPTED
-                self.__interrupted = False
-                return
+        if flag == 'home':
+            print("-------------------------xxx")
+            while (abs(joint_error[0]) >= 0.02) or (abs(joint_error[1]) >= 0.02) or (abs(joint_error[2]) >= 0.05):
+                if (self.__interrupted):
+                    now = datetime.now()
+                    current_time = now.strftime("%H:%M:%S")
+                    print("[ExoArmExecute] Time Cancel   =", current_time)
+                    self.__status = state.PREEMPTED
+                    self.__interrupted = False
+                    return
 
-            self.__group.get_next_feedback(reuse_fbk=feedback)
-            self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
-            current_joint_error = np.expand_dims(np.array(feedback.position), axis=-1)
-            joint_error = selected_pt - current_joint_error
-            torque_command = self.__exponential_stiffness(joint_error) * joint_error
-            for i in range(num_joints):
-                if abs(torque_command[i]) > 1.5:
-                    torque_command[i] = 0.5 * torque_command[i]
+                self.__group.get_next_feedback(reuse_fbk=feedback)
+                
+                current_joint_error = np.expand_dims(np.array(feedback.position), axis=-1)
+                joint_error = selected_pt - current_joint_error
+                torque_command = self.__exponential_stiffness(joint_error) * joint_error
+                for i in range(num_joints):
+                    if abs(torque_command[i]) > 1.5:
+                        torque_command[i] = 0.5 * torque_command[i]
 
-            repulsive_torque = self.__obstacle_force_function(feedback.position)
-            command.effort = torque_command + repulsive_torque
+                repulsive_torque = self.__obstacle_force_function(feedback.position)
+                command.effort = torque_command + repulsive_torque
 
-            z_torque =  -self.__z_stiffness(z_error) * z_error    
-            z_current = z_feedback.position / resolution
-            z_error_in_metre = (z_target - z_current)
-            z_error = z_error_in_metre * resolution
-            z_command.effort = z_torque
+                
 
-            self.__group.send_command(command)
-            self.__z_group.send_command(z_command)
-            sleep(0.1)
+                self.__group.send_command(command)
+                
+                sleep(0.05)
 
-            print('joint_error:' +str(joint_error))
-            print('z_error:' + str(z_error))
+                print('joint_error:' +str(joint_error))
+                print('z_error:' + str(z_error))
+            
+            while (abs(z_error) >= 0.1):
+                self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
+                z_torque =  -self.__z_stiffness(z_error) * z_error    
+                z_current = z_feedback.position / resolution
+                z_error_in_metre = (z_target - z_current)
+                z_error = z_error_in_metre * resolution
+                z_command.effort = z_torque
+                
+                self.__z_group.send_command(z_command)
+                sleep(0.05)
+        else:
+            while (abs(z_error) >= 0.1):
+                self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
+                z_torque =  -self.__z_stiffness(z_error) * z_error    
+                z_current = z_feedback.position / resolution
+                z_error_in_metre = (z_target - z_current)
+                z_error = z_error_in_metre * resolution
+                z_command.effort = z_torque
+                
+                self.__z_group.send_command(z_command)
+                sleep(0.05)
+                
+            while (abs(joint_error[0]) >= 0.02) or (abs(joint_error[1]) >= 0.02) or (abs(joint_error[2]) >= 0.05):
+                if (self.__interrupted):
+                    now = datetime.now()
+                    current_time = now.strftime("%H:%M:%S")
+                    print("[ExoArmExecute] Time Cancel   =", current_time)
+                    self.__status = state.PREEMPTED
+                    self.__interrupted = False
+                    return
+
+                self.__group.get_next_feedback(reuse_fbk=feedback)
+                
+                current_joint_error = np.expand_dims(np.array(feedback.position), axis=-1)
+                joint_error = selected_pt - current_joint_error
+                torque_command = self.__exponential_stiffness(joint_error) * joint_error
+                for i in range(num_joints):
+                    if abs(torque_command[i]) > 1.5:
+                        torque_command[i] = 0.5 * torque_command[i]
+
+                repulsive_torque = self.__obstacle_force_function(feedback.position)
+                command.effort = torque_command + repulsive_torque
+
+                
+
+                self.__group.send_command(command)
+                
+                sleep(0.05)
+
+                print('joint_error:' +str(joint_error))
+                print('z_error:' + str(z_error))
+                
         self.__status = state.SUCCEEDED
 
     def __decay_function(self, point, stiffness, decay_rate, t):
@@ -354,7 +444,7 @@ class ExoArmHandle():
         index = decay_formula2[int(factor * point)]
         return index
 
-    def __z_stiffness(point):
+    def __z_stiffness(self, point):
         starting_point = 4.0
         decay_rate = 0.0001
         t= 2
@@ -521,6 +611,8 @@ def main():
     result = exoarm.exoarm_execute(x, y, z)
     print("RESULT: ", result.name)
 
+# import signal
+# from sys import exit
 
 if __name__ == "__main__":
     main()
