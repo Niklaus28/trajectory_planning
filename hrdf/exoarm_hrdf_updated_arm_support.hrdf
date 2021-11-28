@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot version="1.2.0">
+  <actuator type="X8-16" />
+  <link type="X5" twist="0.000000" extension="0.325000" />
+  <actuator type="X8-16" />
+  <link type="X5" twist="0.000000" extension="0.325000" />
+  <actuator type="X8-16" />
+  <rigid-body mass="0.10445" com_trans="-0.00198 0.00228 0.02297" output_rot="Rz(0)" output_trans="0.3 0 0.05445"/>
+  <end-effector />
+</robot>

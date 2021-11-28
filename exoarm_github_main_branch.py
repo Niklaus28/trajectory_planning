@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Nov 22 17:34:28 2021
+
+@author: haoji
+"""
+
+#! /usr/bin/env python
+
 from datetime import datetime
 from exoarm_state import RobotState as state
 
@@ -6,16 +15,14 @@ from math import pi
 from time import sleep, time
 import numpy as np
 from matplotlib import pyplot as plt
-import util.math_utils as math_utils
 
 LOG_LEVEL = 10  # DEBUG[10] INFO[20] WARNING[30] ERROR[40] CRITICAL[50]
 LOG_HEBI = False
 
-gain_file = "gains/exoarm_gains_plannar_task.xml"
-z_gain_file = "gains/exoarm_gains_z.xml" 
+gain_file = "gains/exoarm_gains.xml"
 hrdf_file = "hrdf/exoarm_hrdf.hrdf"
 user_file = "config/user1.yaml"
-resolution = -(2*pi)/0.072
+
 
 class Point3d(object):
     def __init__(self, x, y, z):
@@ -28,11 +35,9 @@ class ExoArmHandle():
         self.__interrupted = False
         self.__go_home = False
         self.__group = None
-        self.__z_group = None
         self.__model = None
         self.__robot_initialized = False
         self.__gain_file = gain_file
-        self.__z_gain_file = z_gain_file
         self.__hrdf_file = hrdf_file
         self.__user_file = user_file
         self.__pt_home = None
@@ -57,10 +62,6 @@ class ExoArmHandle():
         if not os.path.isfile(self.__gain_file):
             logger.error("gain_file %s not exist", self.__gain_file)
             success = False
-        
-        if not os.path.isfile(self.__z_gain_file):
-            logger.error("gain_file %s not exist", self.__z_gain_file)
-            success = False
 
         if not os.path.isfile(self.__hrdf_file):
             logger.error("hrdf_file %s not exist", self.__hrdf_file)
@@ -73,17 +74,13 @@ class ExoArmHandle():
             logger.error("Config file not loaded")
             success = False
 
-        self.__group, self.__model, self.__z_group = self.__get_group()
+        self.__group, self.__model = self.__get_group()
         if self.__group is None:
             logger.error('Group not found! Check that the family and name of a module on the network matches what is given in the source file.')
             success = False
 
         if self.__model is None:
             logger.error('Model not loaded! Check hrdf file is provided correctly.')
-            success = False
-        
-        if self.__z_group is None:
-            logger.error('Linear Group not found! Check that the family and name of a module on the network matches what is given in the source file.')
             success = False
 
         self.__robot_initialized = success
@@ -156,17 +153,12 @@ class ExoArmHandle():
         """
 
         families = ['rightarm']
-        names = ['base','J1','J2']
-        z_name = ['linear']
+        names = ['base', 'J1', 'J2', 'elbow']
 
         lookup = hebi.Lookup()
         sleep(2.0)
         group = lookup.get_group_from_names(families, names)
         if group is None:
-            return None, None
-        
-        z_group = lookup.get_group_from_names(families, z_name)
-        if z_group is None:
             return None, None
 
         # Set gains
@@ -175,21 +167,10 @@ class ExoArmHandle():
             gains_command.read_gains(self.__gain_file)
         except Exception as e:
             print('Failed to read gains: {0}'.format(e))
-            return group, z_group, None
+            return group, None
         if not group.send_command_with_acknowledgement(gains_command):
             print('Failed to receive ack from group')
-            return group, z_group, None
-
-        z_gains_command = hebi.GroupCommand(z_group.size)
-        try:
-            z_gains_command.read_gains("gains/exoarm_gains_z.xml")
-        except Exception as e:
-            print('Failed to read gains: {0}'.format(e))
-            return group, z_group, None
-
-        if not z_group.send_command_with_acknowledgement(z_gains_command):
-            print('Failed to receive ack from group')
-            return group, z_group, None
+            return group, None
 
         model = None
         try:
@@ -197,35 +178,43 @@ class ExoArmHandle():
         except Exception as e:
             print('Could not load hrdf: {0}'.format(e))
             return group, None
-        # model.add_rigid_body([], inertia, mass, output)
 
-        return group, model, z_group
+        return group, model
 
-    def __setup(self, xyz_targets):
+    def __setup(self, xyz_target):
         num_joints = self.__group.size
-        xyz_col = xyz_targets.shape[1]
+        xyz_col = xyz_target.shape[1]
         feedback = hebi.GroupFeedback(num_joints)
         self.__group.get_next_feedback(reuse_fbk=feedback)
-        z_feedback = hebi.GroupFeedback(self.__z_group.size)
-        self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
-        
-        xyz_target = xyz_targets.copy()
-        xyz_target[-1] = 0.3
-
         elbow_up_angle = feedback.position
-        rotation_target = math_utils.rotate_z(0)
         joint_target = np.empty((num_joints, xyz_col))
-        
+
         for col in range(xyz_col):
             ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_target[:, col])  # define xyz position
-            endeffector_so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)
-            ik_res_angles = self.__model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective ,ee_position_objective)
+            ik_res_angles = self.__model.solve_inverse_kinematics(elbow_up_angle, ee_position_objective)
             joint_target[:, col] = ik_res_angles
-        
-        z_target = xyz_targets[-1]
-        z_current = z_feedback.position / resolution
-        z_error_in_metre = (z_target - z_current)
-        z_error = z_error_in_metre * resolution
+            elbow_up_angle = ik_res_angles
+
+        command = hebi.GroupCommand(num_joints)
+        q_J2_negative_limit = pi / 2
+        q_J2_positive_limit = 3 * pi / 4
+
+        while joint_target[2] > q_J2_positive_limit or joint_target[2] < q_J2_negative_limit:
+            if joint_target[2] > q_J2_positive_limit:
+                command.effort = np.array([0, 0, -0.5, 0])
+            elif joint_target[2] < q_J2_negative_limit:
+                command.effort = np.array([0, 0, 0.5, 0])
+
+            self.__group.send_command(command)
+            self.__group.get_next_feedback(reuse_fbk=feedback)
+            elbow_up_angles = feedback.position
+            joint_target = np.empty((num_joints, xyz_col))
+            logger.debug(joint_target)
+            for col in range(xyz_col):
+                ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_target[:, col])  # define xyz position
+                ik_res_angles = self.__model.solve_inverse_kinematics(elbow_up_angles, ee_position_objective)
+                joint_target[:, col] = ik_res_angles
+                elbow_up_angles = ik_res_angles
 
         if LOG_HEBI:
             log_directory = 'dirs'
@@ -235,24 +224,15 @@ class ExoArmHandle():
         self.__group.get_next_feedback(reuse_fbk=feedback)
         joint_error = joint_target - np.expand_dims(np.array(feedback.position), axis=-1)
 
-        return joint_target, joint_error, z_target, z_error
+        return joint_target, joint_error
 
-    def __goal_position(self, xyz_targets):
+    def __goal_position(self, xyz_target):
         logger.info("[goal_position]")
         logger.debug("[goal_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
-        xyz_target = xyz_targets + np.expand_dims(np.array([-0.075,, 0.1195, -0.1629]),axis=-1)
-        joint_target, joint_error, z_target, z_error = self.__setup(xyz_target)
-        
-        num_joints = self.__group.size
-        feedback = hebi.GroupFeedback(num_joints)
-        self.__group.get_next_feedback(reuse_fbk=feedback)
-        z_feedback = hebi.GroupFeedback(self.__z_group.size)
-        self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
-
-        joint_error = joint_target - np.expand_dims(np.array(feedback.position), axis=-1)
+        joint_target, joint_error = self.__setup(xyz_target)
         try:
-            self.__execute_trajectory(joint_target, joint_error, z_target, z_error)
+            self.__execute_trajectory(joint_target, joint_error)
             logger.info("[goal_position] Robot status: %s", self.__status.name)
             if (self.__status == state.SUCCEEDED):
                 logger.info("[goal_position] Reached target")
@@ -272,18 +252,9 @@ class ExoArmHandle():
         logger.info("[home_position]")
         logger.debug("[home_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
-        joint_target, joint_error, z_target, z_error = self.__setup(xyz_target)
-        #joint_target = np.expand_dims(np.array([-0.65936834, -2.82209253, -1.04075229,  0.41674665]),axis=-1)
-        num_joints = self.__group.size
-        feedback = hebi.GroupFeedback(num_joints)
-        self.__group.get_next_feedback(reuse_fbk=feedback)
-        z_feedback = hebi.GroupFeedback(self.__z_group.size)
-        self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
-
-        joint_error = joint_target - np.expand_dims(np.array(feedback.position), axis=-1)
-        
+        joint_target, joint_error = self.__setup(xyz_target)
         try:
-            self.__execute_trajectory(joint_target, joint_error, z_target, z_error)
+            self.__execute_trajectory(joint_target, joint_error)
             if (self.__status == state.SUCCEEDED):
                 self.__status = state.PENDING
                 logger.info("[home_position] Reached home")
@@ -292,18 +263,16 @@ class ExoArmHandle():
 
         self.__go_home = False
 
-    def __execute_trajectory(self, selected_pt, joint_error, z_target, z_error):
+    def __execute_trajectory(self, selected_pt, joint_error):
         if not self.__robot_initialized:
             raise RuntimeError("[execute_trajectory] Failed: robot not initialized")
 
         num_joints = self.__group.size
         command = hebi.GroupCommand(num_joints)
         feedback = hebi.GroupFeedback(num_joints)
-        z_command = hebi.GroupCommand(self.__z_group.size)
-        z_feedback = hebi.GroupFeedback(self.__z_group.size)
 
         self.__status = state.ACTIVE
-        while (abs(joint_error[0]) >= 0.02) or (abs(joint_error[1]) >= 0.02) or (abs(joint_error[2]) >= 0.05) or (abs(z_error) >= 0.1):
+        while (abs(joint_error[0]) >= 0.02) or (abs(joint_error[1]) >= 0.02) or (abs(joint_error[2]) >= 0.02) or (abs(joint_error[3]) >= 0.05):
             if (self.__interrupted):
                 now = datetime.now()
                 current_time = now.strftime("%H:%M:%S")
@@ -313,7 +282,6 @@ class ExoArmHandle():
                 return
 
             self.__group.get_next_feedback(reuse_fbk=feedback)
-            self.__z_group.get_next_feedback(reuse_fbk=z_feedback)
             current_joint_error = np.expand_dims(np.array(feedback.position), axis=-1)
             joint_error = selected_pt - current_joint_error
             torque_command = self.__exponential_stiffness(joint_error) * joint_error
@@ -323,19 +291,9 @@ class ExoArmHandle():
 
             repulsive_torque = self.__obstacle_force_function(feedback.position)
             command.effort = torque_command + repulsive_torque
-
-            z_torque =  -self.__z_stiffness(z_error) * z_error    
-            z_current = z_feedback.position / resolution
-            z_error_in_metre = (z_target - z_current)
-            z_error = z_error_in_metre * resolution
-            z_command.effort = z_torque
-
             self.__group.send_command(command)
-            self.__z_group.send_command(z_command)
-            sleep(0.1)
+            sleep(0.05)
 
-            print('joint_error:' +str(joint_error))
-            print('z_error:' + str(z_error))
         self.__status = state.SUCCEEDED
 
     def __decay_function(self, point, stiffness, decay_rate, t):
@@ -356,63 +314,61 @@ class ExoArmHandle():
         index = decay_formula2[int(factor * point)]
         return index
 
-    def __z_stiffness(point):
-        starting_point = 4.0
-        decay_rate = 0.0001
-        t= 2
-        stiffness = 2.0
-        array_size = 10000
-        factor = 100
-        offset = stiffness + 0.5
-        decay_formula2 = []
-        for i in range(array_size):
-            decay =  starting_point*pow((1+decay_rate),t)
-            decay_formula2.append(decay)
-            starting_point = decay
-
-        for i in range (array_size):
-            decay_formula2[i]= offset + decay_formula2[i]
-        
-        index = -decay_formula2[int(factor*abs(point))]
-        return index
-
     def __exponential_stiffness(self, joint_error):
         joint_base = abs(joint_error[0])
         joint_J1 = abs(joint_error[1])
         joint_J2 = abs(joint_error[2])
+        joint_J3 = abs(joint_error[3])
 
-        stiffness = np.empty((3, 1))
-        stiffness_base = 2.5
-        stiffness_J1 = 2.5
-        stiffness_J2 = 2.3
-        margin = 0.5
+        stiffness = np.empty((4, 1))
+        stiffness_base = 1.4
+        stiffness_J1 = 1.8
+        stiffness_J2 = 2.0
+        stiffness_J3 = 2.5
 
-        if joint_base < margin:
-            base_stiffness = self.__decay_function(abs(joint_base), stiffness_base, 0.05, 2)
+        min_error = 0.03
+        max_error = 0.5
+
+        if joint_base < min_error:
+            base_stiffness = 10.0
+        elif min_error <= joint_base < max_error:
+            base_stiffness = self.__decay_function(abs(joint_base), stiffness_base, 0.03, 6)
         else:
             base_stiffness = stiffness_base
 
-        if joint_J1 < margin:
-            J1_stiffness = self.__decay_function(abs(joint_J1), stiffness_J1, 0.05, 2)
+        if joint_J1 < min_error:
+            J1_stiffness = 15.0
+        elif min_error <= joint_J1 < max_error:
+            J1_stiffness = self.__decay_function(abs(joint_J1), stiffness_J1, 0.05, 1.5)
         else:
             J1_stiffness = stiffness_J1
 
-        if joint_J2 < margin:
-            J2_stiffness = self.__decay_function(abs(joint_J2), stiffness_J2, 0.05, 1.5)
+        if joint_J2 < min_error:
+            J2_stiffness = 15.0
+        elif min_error <= joint_J2 < max_error:
+            J2_stiffness = self.__decay_function(abs(joint_J2), stiffness_J2, 0.01, 2)
         else:
             J2_stiffness = stiffness_J2
+
+        if joint_J3 < min_error:
+            J3_stiffness = 15.0
+        elif min_error <= joint_J3 < max_error:
+            J3_stiffness = self.__decay_function(abs(joint_J3), stiffness_J3, 0.015, 3)
+        else:
+            J3_stiffness = stiffness_J3
 
         stiffness[0] = base_stiffness
         stiffness[1] = J1_stiffness
         stiffness[2] = J2_stiffness
+        stiffness[3] = J3_stiffness
 
         return stiffness
 
     def __obstacle_decay(self, point):
         starting_point = 1.5
-        decay_rate = 0.04
-        t = 5
-        array_size = 50000
+        decay_rate = 0.025
+        t = 15
+        array_size = 500
         factor = 100
         decay_formula2 = []
 
@@ -428,21 +384,23 @@ class ExoArmHandle():
         return index
 
     def __obstacle_force_function(self, q_current):
-        torque_repulsive = np.empty((3, 1))
+        torque_repulsive = np.empty((4, 1))
         q_base = q_current[0]
         q_J1 = q_current[1]
         q_J2 = q_current[2]
+        q_J3 = q_current[3]
 
-        q_base_negative_limit = -pi
+        q_base_negative_limit = -1.5
         q_base_positive_limit = 1.5
 
-        q_J1_negative_limit = -pi
-        q_J1_positive_limit = pi
+        q_J1_negative_limit = -2.7
+        q_J1_positive_limit = 2.7
 
-        q_J2_negative_limit = -2*pi
-        q_J2_positive_limit = 2*pi
+        q_J2_negative_limit = pi/2
+        q_J2_positive_limit = 3 * pi/4
 
-        
+        q_J3_negative_limit = -pi/2
+        q_J3_positive_limit = pi/4
 
         if q_base >= 0:
             dist_base = q_base_positive_limit - q_base
@@ -465,9 +423,17 @@ class ExoArmHandle():
             dist_J2 = q_J2 - q_J2_negative_limit
             torque_repulsive_J2 = self.__obstacle_decay(dist_J2)
 
+        if q_J3 >= 0:
+            dist_J3 = q_J3_positive_limit - q_J3
+            torque_repulsive_J3 = -self.__obstacle_decay(dist_J3)
+        elif q_J3 < 0:
+            dist_J3 = q_J3 - q_J3_negative_limit
+            torque_repulsive_J3 = self.__obstacle_decay(dist_J3)
+
         torque_repulsive[0] = torque_repulsive_base
         torque_repulsive[1] = torque_repulsive_J1
         torque_repulsive[2] = torque_repulsive_J2
+        torque_repulsive[3] = torque_repulsive_J3
 
         return torque_repulsive
 
@@ -502,7 +468,6 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--gain', type=str, default=gain_file)
-    parser.add_argument('--linear_gain', type=str, default=z_gain_file)
     parser.add_argument('--hrdf', type=str, default=hrdf_file)
     parser.add_argument('--user', type=str, default=user_file)
     parser.add_argument('--log', type=bool, default=False)

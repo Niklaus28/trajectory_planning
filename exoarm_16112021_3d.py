@@ -17,24 +17,27 @@ from util import math_utils
 #status = state.PENDING
 interrupted = False
 go_home = False
+resolution = -(2*pi)/0.072
 
 class Point3d(object):
     def __init__(self, x, y, z):
         self.x, self.y, self.z = x, y, z
-        
+
 def get_group():
     global group
     global model
-    
+    global z_group
     families = ['rightarm']
     names = ['base','J1','J2']
-    #com = [0.00410,0.00074,0.06684]
-    #inertia = [0.00156069598, 0.00160407352, 0.00027313650, -0.00000017350, 0.00010727634, 0.000020488]
-    #mass = 0.25157
-    #output = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0.09491],[0,0,0,1]])
+    z_name = ['linear']
+    
     lookup = hebi.Lookup()
     group = lookup.get_group_from_names(families, names)
     if group is None:
+        return None
+
+    z_group = lookup.get_group_from_names(families, z_name)
+    if z_group is None:
         return None
 
     # Set gains
@@ -47,19 +50,30 @@ def get_group():
     if not group.send_command_with_acknowledgement(gains_command):
         print('Failed to receive ack from group')
         return None
+    
+    z_gains_command = hebi.GroupCommand(z_group.size)
+    try:
+        z_gains_command.read_gains("gains/exoarm_gains_z.xml")
+    except Exception as e:
+        
+        print('Failed to read gains: {0}'.format(e))
+        return None
+    if not z_group.send_command_with_acknowledgement(z_gains_command):
+        print('Failed to receive ack from group')
+        return None
 
     model = hebi.robot_model.import_from_hrdf("hrdf/exoarm_hrdf.hrdf")
     
-    return group,model
+    return group,model,z_group
 
 def decay_function(point,stiffness,decay_rate,t):
     #STARTING POINT = 15
     #DECAY RATE = 0.022
     #T = 9 , T for elbow = 3
     starting_point = 15.0
-    #decay_rate = 0.02
+    #decay_rate = 0.05
     #t=2
-    #stiffness = 3
+    #stiffness = 2.5
     array_size = 100
     factor = 100
     offset = stiffness + 0.5
@@ -73,41 +87,21 @@ def decay_function(point,stiffness,decay_rate,t):
         decay_formula2[i]= offset + decay_formula2[i]
     
     plt.plot(decay_formula2[0:100])
-    #plt.legend('label1','label2','label3','label4')
     index = decay_formula2[int(factor*point)]
     return index
-
-def joint_angle_verification(joint_target):
-    base_joint_min = -1.5
-    base_joint_max = 1.5
-    J1_min = -3.0
-    J1_max = 2.8
-    J2_min = -pi
-    J2_max = pi
-    
-    if joint_target[0] > base_joint_max or joint_target[0] < base_joint_min:
-        result_base = True
-    
-    if joint_target[1] > J1_max or joint_target[1] < J1_min:
-        result_J1 = True
-        
-    if joint_target[2] > J2_max or joint_target[2] < J2_min:
-        result_J2 = True
-        
-    return np.expand_dims(np.array([result_base,result_J1,result_J2]), axis=-1)
 
 def exponential_stiffness(joint_error):
     joint_base = abs(joint_error[0])
     joint_J1 = abs(joint_error[1])
     joint_J2 = abs(joint_error[2])
     
-    stiffness_base = 3.0
-    stiffness_J1 = 3.0
-    stiffness_J2 = 2.5
+    stiffness_base = 2.5
+    stiffness_J1 = 2.5
+    stiffness_J2 = 2.3
 
 
     if joint_base < 0.5:
-        base_stiffness = decay_function(abs(joint_base),stiffness_base,0.02,2)
+        base_stiffness = decay_function(abs(joint_base),stiffness_base,0.05,2)
     else:
         base_stiffness = stiffness_base
 
@@ -117,7 +111,7 @@ def exponential_stiffness(joint_error):
         J1_stiffness = stiffness_J1
 
     if joint_J2 < 0.5:
-        J2_stiffness = decay_function(abs(joint_J2),stiffness_J2,0.05,2)
+        J2_stiffness = decay_function(abs(joint_J2),stiffness_J2,0.05,1.5)
     else:
         J2_stiffness = stiffness_J2
     
@@ -127,9 +121,8 @@ def obstacle_decay(point):
     starting_point = 1.5
     decay_rate = 0.04
     t=5
-    array_size = 500
+    array_size = 50000
     factor = 100
-    #offset = stiffness + 0.5
     decay_formula2 = []
     for i in range(array_size):
         decay =  starting_point*pow((1-decay_rate),t)
@@ -151,13 +144,13 @@ def repulsive_force(q_current):
     q_J2 = q_current[2]
     
     q_base_negative_limit = -pi
-    q_base_positive_limit = pi
+    q_base_positive_limit = 1.5
     
     q_J1_negative_limit = -pi
     q_J1_positive_limit = pi
     
-    q_J2_negative_limit = -pi
-    q_J2_positive_limit = pi
+    q_J2_negative_limit = -2*pi
+    q_J2_positive_limit = 2*pi
       
     if q_base >= 0:
         dist_base = q_base_positive_limit - q_base
@@ -173,24 +166,30 @@ def repulsive_force(q_current):
         dist_J1 = q_J1 - q_J1_negative_limit
         torque_repulsive_J1 = obstacle_decay(dist_J1)
     
-    if q_J2 > 0:
+    if q_J2 > 1.75:
         dist_J2 = q_J2_positive_limit - q_J2
         torque_repulsive_J2 = -obstacle_decay(dist_J2)
-    elif q_J2 <= 0:
+    elif q_J2 <= 1.75:
         dist_J2 = q_J2 -q_J2_negative_limit
         torque_repulsive_J2 = obstacle_decay(dist_J2)
    
     return np.expand_dims(np.array([torque_repulsive_base,torque_repulsive_J1,torque_repulsive_J2]),axis=-1)
     
-def goal_position(xyz_targets):
+def goal_position(new_xyz):
     global group
     global model
-        
-    num_joints = group.size
-    command = hebi.GroupCommand(num_joints)
+    global z_group
+    global resolution
+    
+    command = hebi.GroupCommand(group.size)
     feedback = hebi.GroupFeedback(group.size)
     group.get_next_feedback(reuse_fbk=feedback)
-    
+    z_command = hebi.GroupCommand(z_group.size)
+    z_feedback = hebi.GroupFeedback(z_group.size)
+    z_group.get_next_feedback(reuse_fbk=z_feedback)
+
+    xyz_targets = new_xyz.copy()
+    xyz_targets[-1] = 0.3
     # Choose an "elbow up" initial configuration for IK
     xyz_cols = xyz_targets.shape[1]
     elbow_up_angle = feedback.position
@@ -205,6 +204,8 @@ def goal_position(xyz_targets):
     ##Verify Joint angle limit
     result = joint_angle_verification(joint_target)
     while not all(result):
+        command.effort = np.array([-0.5, 0, 0])
+        group.send_command(command)
         group.get_next_feedback(reuse_fbk=feedback)
     
         # Choose an "elbow up" initial configuration for IK
@@ -219,84 +220,178 @@ def goal_position(xyz_targets):
             joint_target[:, col] = ik_res_angles
         
         result = joint_angle_verification(joint_target)
-    '''
-    #selected_pt = np.expand_dims(loc_6,axis=-1) + offset_angle
+    '''    
+    #conversion between rotation to linear movement
+    
+    z_target = new_xyz[-1]
+    z_error = (new_xyz[-1] - z_feedback.position) *resolution
+    
     group.get_next_feedback(reuse_fbk=feedback)
     current_joint_angle = np.expand_dims(np.array(feedback.position),axis=-1)
     joint_error = joint_target - current_joint_angle
     
-    return joint_target,joint_error
+    return joint_target,joint_error,z_target,z_error
 
-def home_position(xyz_targets):
+def home_position(new_xyz):
     global group
     global model
-    
+    global z_group
+    global resolution
     
     command = hebi.GroupCommand(group.size)
     feedback = hebi.GroupFeedback(group.size)
     group.get_next_feedback(reuse_fbk=feedback)
-    
+    z_command = hebi.GroupCommand(z_group.size)
+    z_feedback = hebi.GroupFeedback(z_group.size)
+    z_group.get_next_feedback(reuse_fbk=z_feedback)
+
+    xyz_targets = new_xyz.copy()
+    xyz_targets[-1] = 0.3
     # Choose an "elbow up" initial configuration for IK
     xyz_cols = xyz_targets.shape[1]
     elbow_up_angle = feedback.position
     rotation_target = math_utils.rotate_y(0)
     joint_target = np.empty((group.size, xyz_cols))
     for col in range(xyz_cols):
-        ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col])  # define xyz position
+        ee_position_objective = hebi.robot_model.endeffector_position_objective(new_xyz[:, col])  # define xyz position
         endeffector_so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)
+        #joint_limit = hebi.robot_model.joint_limit_constraint(minimum=(np.array([-pi,-pi,-pi/2])),maximum=(np.array([pi,pi,pi/2])), weight=1.0)
+        #ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective,joint_limit, ee_position_objective)
         ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective, ee_position_objective)
         joint_target[:, col] = ik_res_angles
-    '''       
+    '''        
     result = joint_angle_verification(joint_target)
     while not all(result):
+        command.effort = np.array([-0.5, 0, 0])
+        group.send_command(command)
         group.get_next_feedback(reuse_fbk=feedback)
     
         # Choose an "elbow up" initial configuration for IK
         xyz_cols = xyz_targets.shape[1]
         elbow_up_angle = feedback.position
-        rotation_target = math_utils.rotate_z(0)
+        rotation_target = math_utils.rotate_y(0)
         joint_target = np.empty((group.size, xyz_cols))
         for col in range(xyz_cols):
             ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col])  # define xyz position
             endeffector_so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)
-            ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective, ee_position_objective)
+            ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective,joint_limit, ee_position_objective)
             joint_target[:, col] = ik_res_angles
         
         result = joint_angle_verification(joint_target)
+        print('verifying')
+    #conversion between rotation to linear movement
     '''
-    #selected_pt = np.expand_dims(loc_6,axis=-1) + offset_angle
+    z_target = new_xyz[-1]
+    z_current = z_feedback.position / resolution
+    z_error_in_metre = (z_target - z_current)
+    z_error = z_error_in_metre * resolution
+    
     group.get_next_feedback(reuse_fbk=feedback)
     current_joint_angle = np.expand_dims(np.array(feedback.position),axis=-1)
     joint_error = joint_target - current_joint_angle
     
-    return joint_target,joint_error
+    return joint_target,joint_error,z_target,z_error
 
-def execute_trajectory(joint_target,joint_error):
+def execute_trajectory(joint_target,joint_error,z_target,z_error):
     global group
     global model
+    global z_group
+    global resolution
         
-    num_joints = group.size
-    command = hebi.GroupCommand(num_joints)
+    command = hebi.GroupCommand(group.size)
     feedback = hebi.GroupFeedback(group.size)
     group.get_next_feedback(reuse_fbk=feedback)
+    z_command = hebi.GroupCommand(z_group.size)
+    z_feedback = hebi.GroupFeedback(z_group.size)
+    z_group.get_next_feedback(reuse_fbk=z_feedback)
     
-    while (abs(joint_error[0]) >=0.02) or (abs(joint_error[1]) >=0.02) or (abs(joint_error[2]) >=0.02):
+    while (abs(joint_error[0]) >=0.02) or (abs(joint_error[1]) >=0.025) or (abs(joint_error[2]) >=0.05) or (abs(z_error))>=0.1:
         group.get_next_feedback(reuse_fbk=feedback)
+        z_group.get_next_feedback(reuse_fbk=z_feedback)
+        
         current_joint_error = np.expand_dims(np.array(feedback.position),axis=-1)
         joint_error = joint_target - current_joint_error
         torque_command = exponential_stiffness(joint_error) * joint_error
         for i in range(group.size):
             if abs(torque_command[i]) > 1.5:
                 torque_command[i] = 0.5 * torque_command[i]
-                        
         repulsive_torque = repulsive_force(feedback.position)
-        #print(repulsive_torque)
         command.effort = torque_command +repulsive_torque 
+
+        z_torque =  -z_stiffness(z_error) * z_error      
+        #z_torque = z_stiffness(z_error)     
+        #z_repulsive = z_limit_repulsive(z_feedback.position)
+        z_current = z_feedback.position / resolution
+        z_error_in_metre = (z_target - z_current)
+        z_error = z_error_in_metre * resolution
+        z_command.effort = z_torque
+        
         group.send_command(command)
-        print(joint_error)
-        sleep(0.05)
+        z_group.send_command(z_command)
+        print('joint_error:' +str(joint_error))
+        print('z_error:' + str(z_error))
+        print('repulsive_force:' +str(repulsive_torque))
+        sleep(0.1)
     
     print("success")
+
+def z_stiffness(point):
+    starting_point = 4.0
+    decay_rate = 0.0001
+    t= 2
+    stiffness = 2.0
+    array_size = 10000
+    factor = 100
+    offset = stiffness + 0.5
+    decay_formula2 = []
+    for i in range(array_size):
+        decay =  starting_point*pow((1+decay_rate),t)
+        decay_formula2.append(decay)
+        starting_point = decay
+
+    for i in range (array_size):
+        decay_formula2[i]= offset + decay_formula2[i]
+    
+    #plt.plot(decay_formula2[0:100])
+    index = -decay_formula2[int(factor*abs(point))]
+    return index
+
+def z_limit_repulsive(position):
+    
+    if position >= 0:
+        force = pi - position
+        z_repulsive_torque = -1.5 * obstacle_decay(force)
+    elif position <pi/2:
+        force = position - 0
+        z_repulsive_torque = 1.5 * obstacle_decay(force)
+    
+    return z_repulsive_torque
+
+
+def joint_angle_verification(joint_target):
+    base_joint_min = -3
+    base_joint_max = 3
+    J1_min = -3.0
+    J1_max = 2.8
+    J2_min = -pi
+    J2_max = pi
+    
+    if joint_target[0] > base_joint_max or joint_target[0] < base_joint_min:
+        result_base = True
+    else:
+        result_base = False
+    
+    if joint_target[1] > J1_max or joint_target[1] < J1_min:
+        result_J1 = True
+    else:
+        result_J1 = False
+        
+    if joint_target[2] > J2_max or joint_target[2] < J2_min:
+        result_J2 = True
+    else:
+        result_J2 = False
+        
+    return np.expand_dims(np.array([result_base,result_J1,result_J2]), axis=-1)
     
 def inverse_function_3_joint(xyz_target):
     global group
@@ -311,6 +406,7 @@ def inverse_function_3_joint(xyz_target):
     
     feedback = hebi.GroupFeedback(group.size)
     group.get_next_feedback(reuse_fbk=feedback)
+
     current_joint_angle = feedback.position
     joint_angle_2 = current_joint_angle[1]
     joint_angle_3 = current_joint_angle[2]
@@ -364,26 +460,24 @@ def inverse_function_3_joint(xyz_target):
 def main():
     global group
     global model
-    group,model = get_group()
+    global z_group
+    global resolution
+    group,model,z_group = get_group()
     
     try:
-        with open('config/user2.yaml') as file:
+        with open('config/user1.yaml') as file:
             config = yaml.safe_load(file)
             pt_home = Point3d(config['home']['x'], config['home']['y'], config['home']['z'])
     except Exception as e:
         print("failed")
         
     
-    joint_target,joint_error =home_position(np.expand_dims(np.array([pt_home.x,pt_home.y,pt_home.z]),axis=-1))   
-    execute_trajectory(joint_target,joint_error)
+    joint_target,joint_error,z_target,z_error =home_position(np.expand_dims(np.array([pt_home.x,pt_home.y,pt_home.z]),axis=-1))   
+    execute_trajectory(joint_target,joint_error,z_target,z_error)
     target = input("Key in goal coordinate\n")
     x, y, z = map(float, target.split())
-    joint_target,joint_error = goal_position(np.expand_dims(np.array([x,y,z]),axis=-1)) 
-    execute_trajectory(joint_target,joint_error)
+    joint_target,joint_error,z_target,z_error = goal_position(np.expand_dims(np.array([x,y,z]),axis=-1)) 
+    execute_trajectory(joint_target,joint_error,z_target,z_error)
     
-
-'''
-
 if __name__ == '__main__':
     main()
-'''
