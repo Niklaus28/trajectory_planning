@@ -62,7 +62,7 @@ def get_group():
         print('Failed to receive ack from group')
         return None
 
-    model = hebi.robot_model.import_from_hrdf("hrdf/exoarm_hrdf.hrdf")
+    model = hebi.robot_model.import_from_hrdf("hrdf/exoarm_hrdf_updated_arm_support.hrdf")
     
     return group,model,z_group
 
@@ -187,7 +187,8 @@ def goal_position(new_xyz):
     z_command = hebi.GroupCommand(z_group.size)
     z_feedback = hebi.GroupFeedback(z_group.size)
     z_group.get_next_feedback(reuse_fbk=z_feedback)
-
+    
+    new_xyz = new_xyz + np.expand_dims(np.array([-0.075, 0.1195, -0.1969]),axis=-1)
     xyz_targets = new_xyz.copy()
     xyz_targets[-1] = 0.3
     # Choose an "elbow up" initial configuration for IK
@@ -198,8 +199,10 @@ def goal_position(new_xyz):
     for col in range(xyz_cols):
         ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_targets[:, col])  # define xyz position
         endeffector_so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)
-        ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective, ee_position_objective)
+        joint_limit = hebi.robot_model.joint_limit_constraint(minimum=(np.array([-pi,-pi,-pi])),maximum=(np.array([pi,pi,pi])), weight=1.0)
+        ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective,joint_limit, ee_position_objective)
         joint_target[:, col] = ik_res_angles
+    
     '''
     ##Verify Joint angle limit
     result = joint_angle_verification(joint_target)
@@ -222,9 +225,11 @@ def goal_position(new_xyz):
         result = joint_angle_verification(joint_target)
     '''    
     #conversion between rotation to linear movement
-    
     z_target = new_xyz[-1]
-    z_error = (new_xyz[-1] - z_feedback.position) *resolution
+    z_current = z_feedback.position / resolution
+    z_error_in_metre = (z_target - z_current)
+    z_error = z_error_in_metre * resolution
+   
     
     group.get_next_feedback(reuse_fbk=feedback)
     current_joint_angle = np.expand_dims(np.array(feedback.position),axis=-1)
@@ -255,8 +260,8 @@ def home_position(new_xyz):
     for col in range(xyz_cols):
         ee_position_objective = hebi.robot_model.endeffector_position_objective(new_xyz[:, col])  # define xyz position
         endeffector_so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)
-        #joint_limit = hebi.robot_model.joint_limit_constraint(minimum=(np.array([-pi,-pi,-pi/2])),maximum=(np.array([pi,pi,pi/2])), weight=1.0)
-        #ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective,joint_limit, ee_position_objective)
+        joint_limit = hebi.robot_model.joint_limit_constraint(minimum=(np.array([-pi,-pi,-pi])),maximum=(np.array([pi,pi,pi])), weight=1.0)
+        ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective,joint_limit, ee_position_objective)
         ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective, ee_position_objective)
         joint_target[:, col] = ik_res_angles
     '''        
@@ -479,5 +484,5 @@ def main():
     joint_target,joint_error,z_target,z_error = goal_position(np.expand_dims(np.array([x,y,z]),axis=-1)) 
     execute_trajectory(joint_target,joint_error,z_target,z_error)
     
-if __name__ == '__main__':
-    main()
+#if __name__ == '__main__':
+#    main()

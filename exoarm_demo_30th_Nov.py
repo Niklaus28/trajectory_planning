@@ -241,7 +241,7 @@ class ExoArmHandle():
         logger.info("[goal_position]")
         logger.debug("[goal_position] Target: %f %f %f", xyz_target[0], xyz_target[1], xyz_target[2])
 
-        xyz_target = xyz_targets + np.expand_dims(np.array([-0.075,, 0.1195, -0.1629]),axis=-1)
+        xyz_target = xyz_targets + np.expand_dims(np.array([-0.075,, 0.1195, -0.1969]),axis=-1)
         joint_target, joint_error, z_target, z_error = self.__setup(xyz_target)
         
         num_joints = self.__group.size
