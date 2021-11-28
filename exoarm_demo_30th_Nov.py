@@ -219,7 +219,8 @@ class ExoArmHandle():
         for col in range(xyz_col):
             ee_position_objective = hebi.robot_model.endeffector_position_objective(xyz_target[:, col])  # define xyz position
             endeffector_so3_objective = hebi.robot_model.endeffector_so3_objective(rotation_target)
-            ik_res_angles = self.__model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective ,ee_position_objective)
+            joint_limit = hebi.robot_model.joint_limit_constraint(minimum=(np.array([-pi,-pi,-pi])),maximum=(np.array([pi,pi,pi])), weight=1.0)
+            ik_res_angles = model.solve_inverse_kinematics(elbow_up_angle, endeffector_so3_objective,joint_limit, ee_position_objective)
             joint_target[:, col] = ik_res_angles
         
         z_target = xyz_targets[-1]
