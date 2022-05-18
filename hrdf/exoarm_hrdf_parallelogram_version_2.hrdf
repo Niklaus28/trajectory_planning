@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot version="1.2.0">
+  <actuator type="X8-16" />
+  <rigid-body mass="0.6225" com_trans="0 0 0.04176" output_rot="Rz(-pi/2)" output_trans="0 -0.05155 0.08445"/>
+  <rigid-body mass="0" com_trans="0 0 0" output_rot="Ry(-pi/2)" output_trans="0 0 0"/>
+  <actuator type="X8-16" />
+  <rigid-body mass="0.47291" com_trans="0.24275 0.14698 -0.0052" output_rot="Rx(pi)" output_trans="0.231 0 0.05795"/>
+  <actuator type="X8-16" />
+  <rigid-body mass="0.34051" com_trans="0.09863 -0.09167 0.01079" output_rot="Rx(0)" output_trans="0.08168 -0.26343 0.00102"/>
+  <end-effector />
+</robot>
+
