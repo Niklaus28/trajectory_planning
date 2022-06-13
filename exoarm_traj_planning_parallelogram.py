@@ -16,6 +16,10 @@ from matplotlib.animation import FuncAnimation
 from util import math_utils
 import numpy as np
 import yaml
+
+# Publisher (inane)
+from std_msgs.msg import Int16
+
 '''
 # Add the root folder of the repository to the search path for modules
 import os, sys
@@ -152,6 +156,11 @@ def main():
   trajectory, joint_targets = IK_calculation(cartesian_tartget)
   duration = trajectory.duration
   services = rospy.Service('target_topic',Targets, callback)
+
+  # Publisher (inane)
+  pub_inane = rospy.Publisher('exoarm_state', Int16, queue_size=1)
+  state_inane = Int16()
+  state_inane.data = 0
   
   start = time()
 
@@ -163,8 +172,12 @@ def main():
     if t > duration:
       t = duration
       pos_cmd, vel_cmd, acc_cmd = trajectory.get_state(t)
+      state_inane.data = 0
     else:
       pos_cmd, vel_cmd, acc_cmd = trajectory.get_state(t)
+      state_inane.data = 1
+
+    pub_inane(state_inane)
 
     # Calculate commanded efforts to assist with tracking the trajectory.
     # Gravity Compensation uses knowledge of the arm's kinematics and mass to
